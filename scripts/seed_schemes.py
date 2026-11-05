@@ -27,7 +27,7 @@ from sqlalchemy import select
 
 async def seed() -> None:
     settings = get_settings()
-    print(f"Database: {settings.database_url}")
+    print("Database: configured")
     await init_db()
 
     svc = SchemeService()

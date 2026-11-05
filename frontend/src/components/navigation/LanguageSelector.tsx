@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Languages } from "lucide-react";
-import { SUPPORTED_LANGUAGES } from "@/i18n";
+import { SUPPORTED_LANGUAGES } from "@/i18n/index";
 import { useAppStore } from "@/store/appStore";
 
 export function LanguageSelector() {

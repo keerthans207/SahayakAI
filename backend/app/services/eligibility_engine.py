@@ -82,6 +82,7 @@ class ProfileSnapshot(BaseModel):
     disability_category: str | None = None
     income_amount: float | None = None
     income_range: str | None = None  # below_limit | above_limit | unknown
+    bpl_status: str | None = None  # yes | no | unknown
     education_level: str | None = None
     course: str | None = None
     institution_type: str | None = None
@@ -211,6 +212,28 @@ def _eval_income(rule: dict, p: ProfileSnapshot) -> RuleResult:
     return RuleResult("income", "satisfied", detail=f"Income within {max_income} limit")
 
 
+def _eval_bpl(rule: dict, p: ProfileSnapshot) -> RuleResult:
+    if _norm(rule.get("verification_status")) != "verified":
+        return RuleResult(
+            "bpl",
+            "unknown",
+            detail="BPL eligibility criterion requires official verification",
+        )
+
+    if rule.get("required", True) is False:
+        return RuleResult("bpl", "satisfied", detail="BPL status not required")
+
+    status = _norm(p.bpl_status)
+
+    if status in {"yes", "true", "bpl", "below_poverty_line", "verified_bpl"}:
+        return RuleResult("bpl", "satisfied", detail="BPL status confirmed")
+
+    if status in {"no", "false", "non_bpl", "not_bpl", "above_poverty_line"}:
+        return RuleResult("bpl", "not_satisfied", detail="BPL status required")
+
+    return RuleResult("bpl", "unknown", detail="Applicant BPL status not provided")
+
+
 def _eval_education(rule: dict, p: ProfileSnapshot) -> RuleResult:
     min_level = rule.get("min_level")
     if min_level is None:
@@ -261,6 +284,7 @@ _SUBSTANTIVE = {
     "age": _eval_age,
     "disability": _eval_disability,
     "income": _eval_income,
+    "bpl": _eval_bpl,
     "education": _eval_education,
     "course": lambda r, p: _eval_membership("course", r, p.course),
     "institution_type": lambda r, p: _eval_membership("institution_type", r, p.institution_type),
@@ -315,7 +339,7 @@ def evaluate(
             for pre in required:
                 key = f"{pre}_status"
                 val = getattr(profile, key, None)
-                met = _norm(val) in {"has_udid", "has_otr", "true", "yes"}
+                met = _norm(val) in {f"has_{_norm(pre)}", "true", "yes", "available"}
                 if val is None:
                     result.unknown_requirements.append(
                         RuleResult("prerequisites", "unknown", detail=f"{pre} status unknown")
@@ -352,19 +376,28 @@ def evaluate(
 
 
 def _derive_outcome(result: EligibilityResult, scheme: SchemeMeta) -> Outcome:
-    # Scheme-level currency first.
-    if scheme.scheme_status in ("inactive", "closed"):
-        return "not_eligible"
-    if scheme.scheme_status in ("upcoming", "unknown"):
-        return "requires_official_verification"
-
+    # A confirmed failure of an applicant-specific rule takes priority.
     if result.requirements_not_satisfied:
         return "not_eligible"
+
+    # Some criteria themselves may be awaiting official confirmation.
+    if any(
+        "official_verification" in _norm(item.detail)
+        for item in result.unknown_requirements
+    ):
+        return "requires_official_verification"
+
+    # Scheme availability is separate from the applicant's personal eligibility.
+    if _norm(scheme.scheme_status) != "active":
+        return "requires_official_verification"
+
     if result.unknown_requirements:
         return "insufficient_information"
-    # All substantive rules satisfied.
-    if scheme.confidence_status == "needs_verification":
+
+    # Only explicitly verified scheme records can produce likely_eligible.
+    if _norm(scheme.confidence_status) != "verified":
         return "potentially_eligible"
+
     return "likely_eligible"
 
 
@@ -374,6 +407,8 @@ def _fill_next_steps(result: EligibilityResult) -> None:
         steps.append("Obtain the missing documents: " + ", ".join(result.missing_documents))
     if result.missing_prerequisites:
         steps.append("Complete prerequisites: " + ", ".join(result.missing_prerequisites))
+    if result.outcome == "requires_official_verification":
+        steps.append("Verify the scheme criteria and current application window with the official department or portal.")
     if result.outcome == "insufficient_information":
         steps.append("Provide the missing profile information so eligibility can be finalised.")
     if result.outcome == "not_eligible":

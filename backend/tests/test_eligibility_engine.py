@@ -112,10 +112,17 @@ def test_prerequisites_reported_as_missing():
     assert r.outcome == "likely_eligible"  # prerequisite is informational
 
 
-def test_scheme_not_active_makes_not_eligible():
+def test_closed_scheme_requires_verification_not_personal_rejection():
     scheme = {"scheme_id": "x", "official_name": "X", "scheme_status": "closed", "confidence_status": "verified"}
     r = evaluate([EligibilityRule(rule_type="disability", rule={"min_percentage": 40})],
                  {"disability_percentage": 60}, scheme)
+    assert r.outcome == "requires_official_verification"
+
+
+def test_confirmed_personal_failure_still_means_not_eligible_when_scheme_closed():
+    scheme = {"scheme_id": "x", "official_name": "X", "scheme_status": "closed", "confidence_status": "verified"}
+    r = evaluate([EligibilityRule(rule_type="disability", rule={"min_percentage": 40})],
+                 {"disability_percentage": 20}, scheme)
     assert r.outcome == "not_eligible"
 
 
@@ -138,3 +145,49 @@ def test_result_serialisable():
 
     r = _eval([{"rule_type": "disability", "rule": {"min_percentage": 40}}], {"disability_percentage": 60})
     json.dumps(r.to_dict())  # must not raise
+
+
+def test_unverified_bpl_rule_never_rejects_applicant():
+    rules = [{
+        "rule_type": "bpl",
+        "rule": {"required": True, "verification_status": "needs_verification"},
+    }]
+    r = _eval(rules, {"bpl_status": "no"})
+    assert r.outcome == "requires_official_verification"
+    assert r.unknown_requirements
+
+
+def test_verified_bpl_rule_accepts_confirmed_bpl_status():
+    rules = [{
+        "rule_type": "bpl",
+        "rule": {"required": True, "verification_status": "verified"},
+    }]
+    r = _eval(rules, {"bpl_status": "yes"})
+    assert r.outcome == "likely_eligible"
+
+
+def test_verified_bpl_rule_rejects_confirmed_non_bpl_status():
+    rules = [{
+        "rule_type": "bpl",
+        "rule": {"required": True, "verification_status": "verified"},
+    }]
+    r = _eval(rules, {"bpl_status": "no"})
+    assert r.outcome == "not_eligible"
+
+
+def test_verified_bpl_rule_reports_missing_status():
+    rules = [{
+        "rule_type": "bpl",
+        "rule": {"required": True, "verification_status": "verified"},
+    }]
+    r = _eval(rules, {})
+    assert r.outcome == "insufficient_information"
+
+
+def test_udid_status_does_not_accept_otr_status_value():
+    rules = [{
+        "rule_type": "prerequisites",
+        "rule": {"required": ["udid"]},
+    }]
+    r = _eval(rules, {"udid_status": "has_otr"})
+    assert "udid" in r.missing_prerequisites

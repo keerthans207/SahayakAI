@@ -23,7 +23,7 @@ export function SourceCitation({ sources }: Props) {
             {s.source_status === "official" ? (
               <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-green-500" aria-hidden title="Official source" />
             ) : (
-              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" aria-hidden title="Needs verification" />
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" aria-hidden />
             )}
             <div className="min-w-0">
               {s.url ? (

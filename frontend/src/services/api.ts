@@ -10,7 +10,7 @@
 
 import type { ApiError } from "@/types/api";
 
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string) || "http://127.0.0.1:8000";
+const BASE_URL = ""; // Use same-origin requests; Vite/Nginx proxies /api.
 const TIMEOUT_MS = 30_000;
 
 export class SahayakApiError extends Error {
@@ -25,7 +25,7 @@ export class SahayakApiError extends Error {
   }
 }
 
-function getAuthHeaders(): HeadersInit {
+function getAuthHeaders(): Record<string, string> {
   // In development (AUTH_PROVIDER=none), no token is needed.
   // In production wire a real token here (from Entra ID / OIDC).
   return {};

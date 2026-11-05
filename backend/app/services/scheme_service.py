@@ -10,6 +10,7 @@ The service works without a database so discovery remains testable offline.
 from __future__ import annotations
 
 import json
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -32,13 +33,41 @@ CATEGORY_LABELS = {
 
 
 def _data_root() -> Path:
-    settings = get_settings()
-    # data/ lives at the project root (parent of backend/).
-    root = Path(settings.chroma_persist_directory).resolve().parent.parent
-    # Fallback to a workspace-relative path if the above looks unusual.
+    """Resolve the official scheme data directory."""
+    explicit = os.getenv("SCHEME_DATA_DIR")
+
+    if explicit:
+        root = Path(explicit).expanduser().resolve()
+        if not root.is_dir():
+            raise RuntimeError(
+                f"SCHEME_DATA_DIR does not exist or is not a directory: {root}"
+            )
+        return root
+
+    # Local development: find the repository-level data directory.
     here = Path(__file__).resolve()
-    candidate = here.parents[3] / "data"
-    return candidate if candidate.exists() else root
+    candidates = [
+        here.parents[3] / "data",
+        Path.cwd() / "data",
+        Path.cwd().parent / "data",
+    ]
+
+    for candidate in candidates:
+        candidate = candidate.resolve()
+        if candidate.is_dir() and (
+            (candidate / "source_registry").is_dir()
+            or any(candidate.glob("*/schemes.json"))
+        ):
+            return candidate
+
+    # Fallback for deployments using the vector-store data directory.
+    settings = get_settings()
+    vector_dir = Path(settings.chroma_persist_directory).expanduser()
+
+    if not vector_dir.is_absolute():
+        vector_dir = Path.cwd() / vector_dir
+
+    return vector_dir.resolve().parent
 
 
 def _load_registry() -> list[dict[str, Any]]:

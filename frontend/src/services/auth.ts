@@ -31,28 +31,60 @@ export interface AuthResponse {
   user: User;
 }
 
+const DEV_AUTH = import.meta.env.VITE_DEV_AUTH === 'true';
+
+function developmentUser(email = 'developer@sahayak.local', name = 'Sahayak Development User'): User {
+  return {
+    id: 'dev-user',
+    email,
+    full_name: name,
+    preferred_language: 'en',
+    created_at: new Date().toISOString(),
+  };
+}
+
+function developmentResponse(email?: string, name?: string): AuthResponse {
+  return {
+    access_token: 'dev-session',
+    token_type: 'bearer',
+    user: developmentUser(email, name),
+  };
+}
+
 export const authService = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
+    if (DEV_AUTH) {
+      return developmentResponse();
+    }
+
     const formData = new FormData();
     formData.append('username', credentials.email);
     formData.append('password', credentials.password);
-    
+
     const response = await api.post<AuthResponse>('/auth/login', formData);
     return response.data;
   },
 
   async register(data: RegisterData): Promise<AuthResponse> {
+    if (DEV_AUTH) {
+      return developmentResponse(data.email, data.full_name);
+    }
+
     const response = await api.post<AuthResponse>('/auth/register', data);
     return response.data;
   },
 
   async getCurrentUser(): Promise<User> {
+    if (DEV_AUTH) {
+      return developmentUser();
+    }
+
     const response = await api.get<User>('/auth/me');
     return response.data;
   },
 
   async logout(): Promise<void> {
-    // Clear token from local storage and auth store
     localStorage.removeItem('token');
+    localStorage.removeItem('sahayak-dev-user-email');
   },
 };

@@ -12,8 +12,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   className,
 }) => {
   return (
-    <ReactMarkdown
-      className={cn('prose prose-sm max-w-none', className)}
+    <div className={cn('prose prose-sm max-w-none', className)}>
+      <ReactMarkdown
       components={{
         h1: ({ node, ...props }) => (
           <h1 className="text-2xl font-bold mb-4 mt-6" {...props} />
@@ -65,6 +65,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       }}
     >
       {content}
-    </ReactMarkdown>
+      </ReactMarkdown>
+    </div>
   );
 };
