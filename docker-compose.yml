@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+  # ---- Sahayak AI backend ----
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override to use the Postgres container when running docker-compose.
+      DATABASE_URL: postgresql+asyncpg://sahayak:sahayak@db:5432/sahayak
+      VECTOR_STORE: memory
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---- PostgreSQL (production DB) ----
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: sahayak
+      POSTGRES_USER: sahayak
+      POSTGRES_PASSWORD: sahayak
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sahayak -d sahayak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+
+# Notes for production deployment on Azure Container Apps:
+# - Replace the 'db' service with Azure Database for PostgreSQL.
+# - Mount Azure File Share for /app/data (or use Azure Blob for uploads).
+# - Set AZURE_TENANT_ID / FOUNDRY_PROJECT_ENDPOINT in Azure secrets or Key Vault refs.
+# - Use Azure Container Registry to host the API image.
+# - See docs/ARCHITECTURE.md for the full production topology.

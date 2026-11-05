@@ -1,0 +1,93 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "view": "View",
+    "search": "Search",
+    "filter": "Filter",
+    "submit": "Submit",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "close": "Close",
+    "confirm": "Confirm",
+    "error": "Error",
+    "success": "Success"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "assistant": "AI Assistant",
+    "schemes": "Schemes",
+    "documents": "Documents",
+    "applications": "Applications",
+    "profile": "Profile",
+    "settings": "Settings",
+    "logout": "Logout"
+  },
+  "landing": {
+    "title": "Welcome to SahayakAI",
+    "subtitle": "Your intelligent assistant for Indian government schemes",
+    "feature1": "Discover eligible government schemes",
+    "feature2": "AI-powered guidance in English and Hindi",
+    "feature3": "Track your applications easily"
+  },
+  "auth": {
+    "login": "Login",
+    "register": "Sign Up",
+    "logout": "Logout",
+    "email": "Email",
+    "password": "Password",
+    "fullName": "Full Name",
+    "phone": "Phone Number",
+    "loginDescription": "Enter your credentials to access your account",
+    "registerDescription": "Create a new account to get started",
+    "loginSuccess": "Login successful!",
+    "loginError": "Login failed. Please check your credentials.",
+    "registerSuccess": "Registration successful!",
+    "registerError": "Registration failed. Please try again.",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "schemes": "Available Schemes",
+    "schemesDescription": "Schemes you may be eligible for",
+    "applications": "My Applications",
+    "applicationsDescription": "Track your application status",
+    "documents": "My Documents",
+    "documentsDescription": "Uploaded documents"
+  },
+  "assistant": {
+    "title": "AI Assistant",
+    "placeholder": "Ask me about government schemes..."
+  },
+  "schemes": {
+    "title": "Government Schemes",
+    "placeholder": "Browse available schemes",
+    "details": "Scheme Details"
+  },
+  "documents": {
+    "title": "My Documents",
+    "placeholder": "Upload and manage your documents"
+  },
+  "applications": {
+    "title": "My Applications",
+    "placeholder": "View and track your applications",
+    "details": "Application Details"
+  },
+  "profile": {
+    "title": "My Profile",
+    "information": "Personal Information"
+  },
+  "settings": {
+    "title": "Settings",
+    "placeholder": "Manage your preferences"
+  },
+  "eligibility": {
+    "title": "Eligibility Check",
+    "placeholder": "Check your eligibility for schemes"
+  }
+}
