@@ -1,110 +1,149 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
 
 @layer base {
+
   :root {
-    --background: 0 0% 100%;
+
+    --background: 0 0% 98%;
+
     --foreground: 222 47% 11%;
+
     --card: 0 0% 100%;
+
     --card-foreground: 222 47% 11%;
+
     --popover: 0 0% 100%;
+
     --popover-foreground: 222 47% 11%;
-    --primary: 221 83% 53%;
-    --primary-foreground: 210 40% 98%;
+
+    --primary: 238 83% 62%;
+
+    --primary-foreground: 0 0% 100%;
+
     --secondary: 210 40% 96%;
+
     --secondary-foreground: 222 47% 11%;
+
     --muted: 210 40% 96%;
+
     --muted-foreground: 215 16% 47%;
+
     --accent: 210 40% 96%;
+
     --accent-foreground: 222 47% 11%;
+
     --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
+
+    --destructive-foreground: 0 0% 100%;
+
     --border: 214 32% 91%;
+
     --input: 214 32% 91%;
-    --ring: 221 83% 53%;
+
+    --ring: 238 83% 62%;
+
     --radius: 0.5rem;
+
   }
+
+
 
   body {
+
     background-color: hsl(var(--background));
+
     color: hsl(var(--foreground));
+
+    font-feature-settings: "rlig" 1, "calt" 1;
+
   }
-}
-[data-fontsize="xl"] { font-size: 1.25rem; }
 
-/* ── Global base ──────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; }
-
-html {
-  font-family: var(--font-sans);
-  font-size: var(--font-size-base);
-  scroll-behavior: smooth;
-  -webkit-text-size-adjust: 100%;
 }
 
-body {
-  margin: 0;
-  background-color: hsl(var(--color-bg));
-  color: hsl(var(--color-text));
-  line-height: 1.6;
-  min-height: 100dvh;
-}
+
 
 /* Respect prefers-reduced-motion */
+
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+
+  *,
+
+  *::before,
+
+  *::after {
+
     animation-duration: 0.01ms !important;
+
     animation-iteration-count: 1 !important;
+
     transition-duration: 0.01ms !important;
+
     scroll-behavior: auto !important;
+
   }
-}
-.reduce-motion *, .reduce-motion *::before, .reduce-motion *::after {
-  animation-duration: 0.01ms !important;
-  transition-duration: 0.01ms !important;
+
 }
 
-/* RTL support for Urdu */
-[dir="rtl"] { text-align: right; }
 
-/* Visible focus rings for keyboard nav */
+
+/* RTL support */
+
+[dir="rtl"] {
+
+  text-align: right;
+
+}
+
+
+
+/* Visible focus rings for keyboard navigation */
+
 :focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-  border-radius: var(--radius-sm);
+
+  outline: 2px solid hsl(var(--ring));
+
+  outline-offset: 2px;
+
 }
+
+
 
 /* Scrollbar styling */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: hsl(var(--color-border-strong)); border-radius: 3px; }
 
-/* ── Utility classes ──────────────────────────────────────── */
-.card {
-  background-color: hsl(var(--color-surface));
-  border: 1px solid hsl(var(--color-border));
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  padding: 1.25rem;
+::-webkit-scrollbar {
+
+  width: 8px;
+
+  height: 8px;
+
 }
 
-.btn-primary {
-  background-color: hsl(var(--color-primary));
-  color: hsl(var(--color-primary-fg));
-  border: none;
-  border-radius: var(--radius-md);
-  padding: 0.625rem 1.25rem;
-  font-weight: 600;
-  font-size: 0.9375rem;
-  cursor: pointer;
-  transition: background-color var(--transition-fast);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.btn-primary:hover { background-color: hsl(var(--color-primary-hover)); }
-.btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
 
-.badge-active { background-color: hsl(var(--color-success-bg)); color: hsl(var(--color-success)); }
-.badge-warning { background-color: hsl(var(--color-warning-bg)); color: hsl(var(--color-warning)); }
-.badge-error { background-color: hsl(var(--color-error-bg)); color: hsl(var(--color-error)); }
-.badge-info { background-color: hsl(var(--color-info-bg)); color: hsl(var(--color-info)); }
+
+::-webkit-scrollbar-track {
+
+  background: transparent;
+
+}
+
+
+
+::-webkit-scrollbar-thumb {
+
+  background: hsl(var(--border));
+
+  border-radius: 4px;
+
+}
+
+
+
+::-webkit-scrollbar-thumb:hover {
+
+  background: hsl(var(--muted-foreground) / 0.5);
+
+}

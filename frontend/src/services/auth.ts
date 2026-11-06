@@ -1,4 +1,4 @@
-import { api } from '../lib/api';
+import { api } from './api';
 
 export interface LoginCredentials {
   email: string;
@@ -33,7 +33,10 @@ export interface AuthResponse {
 
 const DEV_AUTH = import.meta.env.VITE_DEV_AUTH === 'true';
 
-function developmentUser(email = 'developer@sahayak.local', name = 'Sahayak Development User'): User {
+function developmentUser(
+  email = 'developer@sahayak.local',
+  name = 'Sahayak Development User'
+): User {
   return {
     id: 'dev-user',
     email,
@@ -61,8 +64,7 @@ export const authService = {
     formData.append('username', credentials.email);
     formData.append('password', credentials.password);
 
-    const response = await api.post<AuthResponse>('/auth/login', formData);
-    return response.data;
+    return api.upload<AuthResponse>('/auth/login', formData);
   },
 
   async register(data: RegisterData): Promise<AuthResponse> {
@@ -70,8 +72,7 @@ export const authService = {
       return developmentResponse(data.email, data.full_name);
     }
 
-    const response = await api.post<AuthResponse>('/auth/register', data);
-    return response.data;
+    return api.post<AuthResponse>('/auth/register', data);
   },
 
   async getCurrentUser(): Promise<User> {
@@ -79,8 +80,7 @@ export const authService = {
       return developmentUser();
     }
 
-    const response = await api.get<User>('/auth/me');
-    return response.data;
+    return api.get<User>('/auth/me');
   },
 
   async logout(): Promise<void> {
