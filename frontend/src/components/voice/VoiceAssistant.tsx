@@ -33,6 +33,7 @@ export function VoiceAssistant({
   const [editableTranscript, setEditableTranscript] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [errorType, setErrorType] = useState<string>('');
   const [hasSpoken, setHasSpoken] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -52,9 +53,15 @@ export function VoiceAssistant({
         setEditableTranscript((prev) => prev + text);
       }
     },
-    onError: (error) => {
+    onError: (error, type) => {
       setErrorMessage(error);
-      setTimeout(() => setErrorMessage(''), 5000);
+      setErrorType(type);
+      // Clear error message after 8 seconds (longer for permission errors)
+      const timeout = type === 'permission-denied' ? 12000 : 8000;
+      setTimeout(() => {
+        setErrorMessage('');
+        setErrorType('');
+      }, timeout);
     },
   });
 
@@ -88,14 +95,27 @@ export function VoiceAssistant({
 
   const handleSend = () => {
     const message = editableTranscript.trim() || textInput.trim();
-    if (message) {
-      onSend(message);
-      setTextInput('');
-      setEditableTranscript('');
-      setIsEditing(false);
-      resetRecognition();
-      setHasSpoken(false);
+    if (!message) {
+      // Never send empty messages
+      return;
     }
+    onSend(message);
+    setTextInput('');
+    setEditableTranscript('');
+    setIsEditing(false);
+    resetRecognition();
+    setHasSpoken(false);
+    setErrorMessage('');
+    setErrorType('');
+  };
+
+  const handleRetry = () => {
+    setErrorMessage('');
+    setErrorType('');
+    setEditableTranscript('');
+    setIsEditing(false);
+    resetRecognition();
+    startListening();
   };
 
   const handleTextSend = (e: React.FormEvent) => {
@@ -244,9 +264,38 @@ export function VoiceAssistant({
 
           {/* Error Message */}
           {errorMessage && (
-            <div className="w-full bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
-              <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700">{errorMessage}</p>
+            <div className="w-full bg-red-50 border border-red-200 rounded-lg p-3">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm text-red-700 font-medium">{errorMessage}</p>
+                  {errorType === 'permission-denied' && (
+                    <p className="text-xs text-red-600 mt-1">
+                      {t('voice.permissionHelp', { 
+                        defaultValue: 'Check your browser settings to allow microphone access for this site.' 
+                      })}
+                    </p>
+                  )}
+                  {errorType === 'network' && (
+                    <p className="text-xs text-red-600 mt-1">
+                      {t('voice.networkHelp', { 
+                        defaultValue: 'Web Speech API requires an internet connection. Please check your connection and try again.' 
+                      })}
+                    </p>
+                  )}
+                </div>
+                {errorType !== 'permission-denied' && (
+                  <Button
+                    onClick={handleRetry}
+                    size="sm"
+                    variant="ghost"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-100 gap-1 flex-shrink-0"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    {t('voice.retry', { defaultValue: 'Retry' })}
+                  </Button>
+                )}
+              </div>
             </div>
           )}
 

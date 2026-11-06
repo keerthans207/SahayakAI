@@ -87,19 +87,31 @@ def discover_node(state: SahayakState) -> dict[str, Any]:
     # Prefer state filter from profile when present.
     state_filter = profile.get("state")
     items, total = svc.search(last or "", category=category, state=state_filter, page=1, page_size=10)
+    
+    # Include complete scheme details for LLM context: description, benefits, rules, sources
     schemes = [
         {
             "scheme_id": s["scheme_id"],
             "official_name": s["official_name"],
+            "description": s.get("description", ""),
             "category": s["category"],
+            "department": s.get("department"),
             "government_level": s["government_level"],
+            "applicable_state": s.get("applicable_state"),
+            "benefit_description": s.get("benefit_description"),
             "benefit_amount": s.get("benefit_amount"),
+            "benefit_frequency": s.get("benefit_frequency"),
+            "required_documents": s.get("required_documents", []),
+            "prerequisite_services": s.get("prerequisite_services", []),
+            "application_url": s.get("application_url"),
             "scheme_status": s.get("scheme_status"),
             "confidence_status": s.get("confidence_status"),
-            "application_url": s.get("application_url"),
+            "rules": s.get("rules", []),
+            "sources": s.get("sources", []),
         }
         for s in items
     ]
+    
     sources: list[dict[str, Any]] = []
     for s in items:
         for src in s.get("sources", []):

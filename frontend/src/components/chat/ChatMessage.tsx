@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Copy, Check, Bot, User } from "lucide-react";
 import { SourceCitation } from "./SourceCitation";
+import { MarkdownRenderer } from "../ui/MarkdownRenderer";
 import type { ChatMessageRead, ChatTurnResponse, OfficialSource } from "@/types/api";
 import { formatRelative, cn } from "@/lib/utils";
 
@@ -68,10 +69,10 @@ export function ChatMessage({ message, sources }: Props) {
               : undefined
           }
         >
-          {/* Streaming indicator */}
+          {/* Message content */}
           {message.streaming ? (
             <span className="flex items-center gap-2">
-              <span>{message.content}</span>
+              <span style={{ whiteSpace: "pre-wrap" }}>{message.content}</span>
               <span className="flex gap-1" aria-label="Typing">
                 {[0, 1, 2].map((i) => (
                   <span
@@ -82,8 +83,13 @@ export function ChatMessage({ message, sources }: Props) {
                 ))}
               </span>
             </span>
-          ) : (
+          ) : isUser ? (
             <span style={{ whiteSpace: "pre-wrap" }}>{message.content}</span>
+          ) : (
+            <MarkdownRenderer 
+              content={message.content}
+              className="prose-sm prose-p:leading-relaxed prose-headings:text-gray-900 prose-a:text-blue-600"
+            />
           )}
         </div>
 

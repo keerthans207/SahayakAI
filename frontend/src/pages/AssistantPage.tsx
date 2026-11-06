@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { MessageSquare, Sparkles, Plus, History } from 'lucide-react';
-import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { MarkdownRenderer } from '../components/ui/MarkdownRenderer';
 import { VoiceAssistant } from '../components/voice/VoiceAssistant';
 import { chatService } from '../services/chat.service';
 import type { ChatMessageRead } from '../types/api';
@@ -24,79 +24,129 @@ export const AssistantPage: React.FC = () => {
 
   const initialPrompt = (location.state as { initialPrompt?: string })?.initialPrompt;
 
-  // Create session
-  const createSessionMutation = useMutation({
-    mutationFn: () => chatService.createSession({ 
-      title: 'Voice Conversation',
-      preferred_language: i18n.language 
-    }),
-    onSuccess: (session) => {
-      setSessionId(session.id);
-      // If there's an initial prompt, send it
-      if (initialPrompt) {
-        handleSendMessage(initialPrompt);
-      }
-    },
-  });
+  // Send message with streaming
+  const handleSendMessage = async (content: string) => {
+    if (!content.trim() || isProcessing) return;
 
-  // Send message
-  const sendMessageMutation = useMutation({
-    mutationFn: ({ sessionId, content }: { sessionId: string; content: string }) =>
-      chatService.sendMessage(sessionId, { content, language: i18n.language }),
-    onSuccess: (response) => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: response.message_id,
-          role: 'assistant',
-          content: response.content,
-          language: response.language,
-          created_at: new Date().toISOString(),
-        },
-      ]);
-      setIsProcessing(false);
-    },
-    onError: () => {
-      setIsProcessing(false);
-    },
-  });
-
-  const handleSendMessage = (content: string) => {
-    if (!content.trim()) return;
-
+    const trimmedContent = content.trim();
+    
     // Add user message
     const userMessage: Message = {
-      id: `temp-${Date.now()}`,
+      id: `temp-user-${Date.now()}`,
       role: 'user',
-      content: content.trim(),
+      content: trimmedContent,
       created_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, userMessage]);
     setIsProcessing(true);
 
-    if (!sessionId) {
-      createSessionMutation.mutate();
-    } else {
-      sendMessageMutation.mutate({ sessionId, content: content.trim() });
+    // Create session if needed
+    let activeSessionId = sessionId;
+    if (!activeSessionId) {
+      try {
+        const session = await chatService.createSession({
+          title: 'Voice Conversation',
+          preferred_language: i18n.language,
+        });
+        activeSessionId = session.id;
+        setSessionId(session.id);
+      } catch (error) {
+        console.error('Failed to create session:', error);
+        setIsProcessing(false);
+        return;
+      }
+    }
+
+    // Add assistant message placeholder
+    const assistantMessageId = `temp-assistant-${Date.now()}`;
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString(),
+      isStreaming: true,
+    };
+    setMessages((prev) => [...prev, assistantMessage]);
+
+    try {
+      // Stream the response
+      const stream = chatService.stream(activeSessionId, {
+        content: trimmedContent,
+        language: i18n.language,
+      });
+
+      let fullContent = '';
+      for await (const token of stream) {
+        fullContent += token;
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? { ...msg, content: fullContent }
+              : msg
+          )
+        );
+      }
+
+      // Mark streaming as complete
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? { ...msg, isStreaming: false }
+            : msg
+        )
+      );
+    } catch (error) {
+      console.error('Failed to stream message:', error);
+      // Remove the placeholder message on error
+      setMessages((prev) => prev.filter((msg) => msg.id !== assistantMessageId));
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleNewConversation = () => {
+  const handleNewConversation = async () => {
     setMessages([]);
     setSessionId(null);
-    createSessionMutation.mutate();
+    
+    try {
+      const session = await chatService.createSession({
+        title: 'Voice Conversation',
+        preferred_language: i18n.language,
+      });
+      setSessionId(session.id);
+    } catch (error) {
+      console.error('Failed to create new session:', error);
+    }
   };
+
+  // Initialize session
+  useEffect(() => {
+    const initSession = async () => {
+      try {
+        const session = await chatService.createSession({
+          title: 'Voice Conversation',
+          preferred_language: i18n.language,
+        });
+        setSessionId(session.id);
+        
+        // If there's an initial prompt, send it
+        if (initialPrompt) {
+          handleSendMessage(initialPrompt);
+        }
+      } catch (error) {
+        console.error('Failed to initialize session:', error);
+      }
+    };
+
+    if (!sessionId) {
+      initSession();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  useEffect(() => {
-    // Initialize session on mount
-    if (!sessionId) {
-      createSessionMutation.mutate();
-    }
-  }, []);
 
   const suggestedPrompts = [
     "Find scholarships for students with disabilities in Karnataka.",
@@ -224,7 +274,17 @@ export const AssistantPage: React.FC = () => {
                       : 'bg-white border border-gray-200 text-gray-900'
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  {message.role === 'assistant' ? (
+                    <MarkdownRenderer 
+                      content={message.content} 
+                      className="text-sm prose-p:leading-relaxed prose-headings:text-gray-900"
+                    />
+                  ) : (
+                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  )}
+                  {message.isStreaming && (
+                    <span className="inline-block w-2 h-4 bg-violet-600 animate-pulse ml-1"></span>
+                  )}
                   <p className={`text-xs mt-2 ${
                     message.role === 'user' ? 'text-indigo-200' : 'text-gray-500'
                   }`}>
