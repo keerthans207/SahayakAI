@@ -43,6 +43,8 @@ class SahayakState(TypedDict, total=False):
     # Intent & scheme selection.
     current_intent: Intent
     selected_scheme: str
+    discovered_scheme_ids: list[str]
+    scheme_evaluations: list[dict[str, Any]]
     # Retrieved evidence.
     retrieved_documents: list[dict[str, Any]]
     official_sources: list[dict[str, Any]]

@@ -20,16 +20,17 @@ class SahayakAgent:
     def __init__(self) -> None:
         self._graph = get_graph()
 
-    async def run(
+    def _build_initial_state(
         self,
         *,
         user_message: str,
-        user_id: str = "dev-user",
-        session_id: str = "",
-        preferred_language: str | None = None,
-        user_profile: dict[str, Any] | None = None,
-        history: list[dict[str, Any]] | None = None,
-    ) -> dict[str, Any]:
+        user_id: str,
+        session_id: str,
+        preferred_language: str | None,
+        user_profile: dict[str, Any] | None,
+        history: list[dict[str, Any]] | None,
+    ) -> SahayakState:
+        """Build initial state from request parameters."""
         messages: list = []
         for h in history or []:
             role = h.get("role")
@@ -40,7 +41,7 @@ class SahayakAgent:
                 messages.append(AIMessage(content=content))
         messages.append(HumanMessage(content=user_message))
 
-        initial: SahayakState = {
+        return {
             "messages": messages,
             "user_id": user_id,
             "session_id": session_id,
@@ -52,6 +53,26 @@ class SahayakAgent:
             "tool_calls": [],
             "validation_flags": [],
         }
+
+    async def run(
+        self,
+        *,
+        user_message: str,
+        user_id: str = "dev-user",
+        session_id: str = "",
+        preferred_language: str | None = None,
+        user_profile: dict[str, Any] | None = None,
+        history: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Execute the full graph and return the final state (non-streaming)."""
+        initial = self._build_initial_state(
+            user_message=user_message,
+            user_id=user_id,
+            session_id=session_id,
+            preferred_language=preferred_language,
+            user_profile=user_profile,
+            history=history,
+        )
         result = await self._graph.ainvoke(initial)
         # Ensure an assistant AIMessage is present in the returned messages.
         result_messages = result.get("messages", [])
@@ -59,6 +80,68 @@ class SahayakAgent:
             result_messages = result_messages + [AIMessage(content=result.get("response", ""))]
         result["messages"] = result_messages
         return result
+
+    async def stream(
+        self,
+        *,
+        user_message: str,
+        user_id: str = "dev-user",
+        session_id: str = "",
+        preferred_language: str | None = None,
+        user_profile: dict[str, Any] | None = None,
+        history: list[dict[str, Any]] | None = None,
+    ):
+        """Stream graph execution with real-time token generation.
+
+        Yields events:
+        - {"type": "retrieval_complete"} when scheme/document retrieval finishes
+        - {"type": "token", "content": str} for each LLM token
+        - {"type": "final_state", "state": dict} with the complete final state
+        """
+        initial = self._build_initial_state(
+            user_message=user_message,
+            user_id=user_id,
+            session_id=session_id,
+            preferred_language=preferred_language,
+            user_profile=user_profile,
+            history=history,
+        )
+
+        # Track state through pipeline
+        current_state = initial
+        retrieval_complete = False
+
+        from app.utils.content_normalizer import normalize_content
+
+        async for event in self._graph.astream_events(initial, version="v2"):
+            event_type = event.get("event")
+            name = event.get("name", "")
+
+            # Track state updates from nodes
+            if event_type == "on_chain_end" and event.get("data", {}).get("output"):
+                output = event["data"]["output"]
+                if isinstance(output, dict):
+                    current_state = {**current_state, **output}
+
+            # Signal when retrieval completes (before LLM generation)
+            if event_type == "on_chain_end" and name in (
+                "retrieve_evidence", "discover", "evaluate", "documents",
+                "application", "udid_otr", "general"
+            ):
+                if not retrieval_complete:
+                    retrieval_complete = True
+                    yield {"type": "retrieval_complete"}
+
+            # Stream LLM tokens from the generate_response node
+            if event_type == "on_chat_model_stream":
+                chunk = event.get("data", {}).get("chunk")
+                if chunk is not None and hasattr(chunk, "content"):
+                    token_text = normalize_content(chunk.content)
+                    if token_text:
+                        yield {"type": "token", "content": token_text}
+
+        # Emit final complete state
+        yield {"type": "final_state", "state": current_state}
 
 
 _agent: SahayakAgent | None = None

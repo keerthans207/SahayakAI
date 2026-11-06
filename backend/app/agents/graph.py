@@ -29,6 +29,10 @@ from app.services.retrieval_service import RetrievalService
 from app.services.scheme_service import SchemeService
 from app.services.search_service import get_search_provider
 from app.services.language_service import detect_language, resolve_response_language
+from app.utils.content_normalizer import normalize_content
+
+# Backward compatibility for existing tests
+_normalize_ai_content = normalize_content
 
 
 # --------------------------------------------------------------------------- #
@@ -66,7 +70,7 @@ def route_request(state: SahayakState) -> str:
     intent = state.get("current_intent", "general_government_assistance")
     mapping = {
         "scheme_discovery": "discover",
-        "eligibility_evaluation": "evaluate",
+        "eligibility_evaluation": "discover",
         "document_assistance": "documents",
         "application_guidance": "application",
         "udid_otr_assistance": "udid_otr",
@@ -77,28 +81,63 @@ def route_request(state: SahayakState) -> str:
     return mapping.get(intent, "general")
 
 
+def route_after_discover(state: SahayakState) -> str:
+    """Evaluate discovered schemes for eligibility requests."""
+    if state.get("current_intent") == "eligibility_evaluation":
+        return "evaluate"
+    return "retrieve_evidence"
+
+
+
 # ---- intent handler nodes -------------------------------------------------- #
 def discover_node(state: SahayakState) -> dict[str, Any]:
     last = _last_user_text(state)
     category = category_for_intent(state.get("current_intent", ""))
     profile = state.get("user_profile") or {}
     svc = SchemeService()
-    # Prefer state filter from profile when present.
-    state_filter = profile.get("state")
-    items, total = svc.search(last or "", category=category, state=state_filter, page=1, page_size=10)
+    # An explicitly requested scheme must take priority over broad search.
+    requested_scheme_id = profile.get("scheme_id") or _infer_scheme(state)
+
+    if requested_scheme_id:
+        requested_scheme_id = str(requested_scheme_id).strip()
+        requested_scheme = svc.get_scheme(requested_scheme_id)
+        items = [requested_scheme] if requested_scheme else []
+        total = len(items)
+    else:
+        # Otherwise discover relevant schemes using the query and profile.
+        state_filter = profile.get("state")
+        items, total = svc.search(
+            last or "",
+            category=category,
+            state=state_filter,
+            page=1,
+            page_size=10,
+        )
+
+    # Include complete scheme details for LLM context: description, benefits, rules, sources
     schemes = [
         {
             "scheme_id": s["scheme_id"],
             "official_name": s["official_name"],
+            "description": s.get("description", ""),
             "category": s["category"],
+            "department": s.get("department"),
             "government_level": s["government_level"],
+            "applicable_state": s.get("applicable_state"),
+            "benefit_description": s.get("benefit_description"),
             "benefit_amount": s.get("benefit_amount"),
+            "benefit_frequency": s.get("benefit_frequency"),
+            "required_documents": s.get("required_documents", []),
+            "prerequisite_services": s.get("prerequisite_services", []),
+            "application_url": s.get("application_url"),
             "scheme_status": s.get("scheme_status"),
             "confidence_status": s.get("confidence_status"),
-            "application_url": s.get("application_url"),
+            "rules": s.get("rules", []),
+            "sources": s.get("sources", []),
         }
         for s in items
     ]
+
     sources: list[dict[str, Any]] = []
     for s in items:
         for src in s.get("sources", []):
@@ -107,47 +146,115 @@ def discover_node(state: SahayakState) -> dict[str, Any]:
         "retrieved_documents": [{"content": json.dumps(schemes, ensure_ascii=False), "citation": {}}],
         "official_sources": _dedupe_sources(sources),
         "selected_scheme": schemes[0]["scheme_id"] if schemes else "",
+        "discovered_scheme_ids": [s["scheme_id"] for s in schemes],
+        "scheme_evaluations": [],
         "tool_calls": ["scheme_search"],
     }
 
 
 def evaluate_node(state: SahayakState) -> dict[str, Any]:
+    """Evaluate every discovered scheme independently against the profile."""
     profile = state.get("user_profile") or {}
-    scheme_id = state.get("selected_scheme")
-    if not scheme_id:
-        # Try to infer a scheme from the last message (scheme id mention).
-        last = _last_user_text(state).lower()
-        svc = SchemeService()
-        for s in svc.schemes:
-            if s["scheme_id"] in last:
-                scheme_id = s["scheme_id"]
-                break
-    if not scheme_id:
+    svc = SchemeService()
+
+    scheme_ids = list(state.get("discovered_scheme_ids") or [])
+
+    # Backward compatibility for direct single-scheme evaluation.
+    if not scheme_ids and state.get("selected_scheme"):
+        scheme_ids = [state["selected_scheme"]]
+
+    if not scheme_ids:
+        inferred = _infer_scheme(state)
+        if inferred:
+            scheme_ids = [inferred]
+
+    if not scheme_ids:
         return {
             "eligibility_result": {"outcome": "insufficient_information"},
-            "missing_requirements": ["scheme_id or sufficient profile to evaluate"],
+            "scheme_evaluations": [],
+            "missing_requirements": [
+                "No matching scheme was found in the current registry."
+            ],
             "tool_calls": ["eligibility"],
             "validation_flags": ["no_scheme_selected"],
         }
-    svc = SchemeService()
-    scheme = svc.get_scheme(scheme_id)
-    if not scheme:
-        return {"eligibility_result": {"outcome": "not_eligible", "error": f"unknown scheme {scheme_id}"}}
-    rules = [EligibilityRule(**r) for r in scheme.get("rules", [])]
-    snap = ProfileSnapshot(**{k: v for k, v in profile.items() if k in ProfileSnapshot.model_fields})
-    meta = SchemeMeta(
-        scheme_id=scheme["scheme_id"],
-        official_name=scheme["official_name"],
-        scheme_status=scheme.get("scheme_status", "active"),
-        confidence_status=scheme.get("confidence_status", "needs_verification"),
+
+    snapshot = ProfileSnapshot(
+        **{
+            key: value
+            for key, value in profile.items()
+            if key in ProfileSnapshot.model_fields
+        }
     )
-    result = evaluate(rules, snap, meta)
-    sources = scheme.get("sources", [])
+
+    evaluations: list[dict[str, Any]] = []
+    all_sources: list[dict[str, Any]] = []
+    all_missing: list[str] = []
+
+    for scheme_id in dict.fromkeys(scheme_ids):
+        scheme = svc.get_scheme(scheme_id)
+        if not scheme:
+            continue
+
+        rules = [
+            EligibilityRule(**rule)
+            for rule in scheme.get("rules", [])
+        ]
+
+        meta = SchemeMeta(
+            scheme_id=scheme["scheme_id"],
+            official_name=scheme["official_name"],
+            scheme_status=scheme.get("scheme_status", "active"),
+            confidence_status=scheme.get(
+                "confidence_status", "needs_verification"
+            ),
+        )
+
+        result = evaluate(rules, snapshot, meta)
+        scheme_sources = _dedupe_sources(scheme.get("sources", []))
+
+        evaluation = result.to_dict()
+        evaluation["official_name"] = scheme["official_name"]
+        evaluation["confidence_status"] = scheme.get(
+            "confidence_status", "needs_verification"
+        )
+        evaluation["sources"] = scheme_sources
+
+        evaluations.append(evaluation)
+        all_sources.extend(scheme_sources)
+
+        missing = (
+            result.missing_documents
+            + result.missing_prerequisites
+            + result.missing_information
+        )
+
+        all_missing.extend(
+            f'{scheme["official_name"]}: {requirement}'
+            for requirement in missing
+        )
+
+    if not evaluations:
+        return {
+            "eligibility_result": {"outcome": "insufficient_information"},
+            "scheme_evaluations": [],
+            "missing_requirements": [
+                "Discovered scheme records could not be loaded for evaluation."
+            ],
+            "tool_calls": ["eligibility"],
+            "validation_flags": ["scheme_records_unavailable"],
+        }
+
+    # Keep the legacy singular result for existing consumers.
     return {
-        "selected_scheme": scheme_id,
-        "eligibility_result": result.to_dict(),
-        "missing_requirements": result.missing_documents + result.missing_prerequisites + result.missing_information,
-        "official_sources": _dedupe_sources(sources),
+        "selected_scheme": evaluations[0]["scheme_id"],
+        "discovered_scheme_ids": [
+            item["scheme_id"] for item in evaluations
+        ],
+        "eligibility_result": evaluations[0],
+        "scheme_evaluations": evaluations,
+        "missing_requirements": list(dict.fromkeys(all_missing)),
+        "official_sources": _dedupe_sources(all_sources),
         "tool_calls": ["eligibility"],
     }
 
@@ -291,14 +398,28 @@ def retrieve_evidence_node(state: SahayakState) -> dict[str, Any]:
 
 def validate_information_node(state: SahayakState) -> dict[str, Any]:
     flags = list(state.get("validation_flags", []))
-    # Flag confidence on any scheme advice surfaced.
-    if state.get("selected_scheme"):
-        svc = SchemeService()
-        scheme = svc.get_scheme(state["selected_scheme"])
-        if scheme and scheme.get("confidence_status") == "needs_verification":
+    svc = SchemeService()
+
+    scheme_ids = (
+        state.get("discovered_scheme_ids")
+        or ([state["selected_scheme"]] if state.get("selected_scheme") else [])
+    )
+
+    for scheme_id in scheme_ids:
+        scheme = svc.get_scheme(scheme_id)
+        if (
+            scheme
+            and scheme.get("confidence_status") == "needs_verification"
+            and "scheme_details_need_verification" not in flags
+        ):
             flags.append("scheme_details_need_verification")
-    if not state.get("retrieved_documents") and state.get("current_intent") in ("scheme_discovery",):
+
+    if (
+        not state.get("retrieved_documents")
+        and state.get("current_intent") == "scheme_discovery"
+    ):
         flags.append("advising_from_registry_only")
+
     return {"validation_flags": flags}
 
 
@@ -312,10 +433,23 @@ async def generate_response_node(state: SahayakState) -> dict[str, Any]:
     if not messages or not any(isinstance(m, HumanMessage) for m in messages[-3:]):
         # Ensure there is at least one human turn for models that expect it.
         messages.append(HumanMessage(content=_last_user_text(state) or "Hello"))
+    chunks: list[str] = []
     try:
-        ai_msg = await model.ainvoke(messages)
-        content = ai_msg.content if isinstance(ai_msg.content, str) else str(ai_msg.content)
-    except Exception:  # noqa: BLE001 - degrade gracefully, never crash chat
+        # Stream actual model chunks so LangGraph emits
+        # on_chat_model_stream events to the agent stream.
+        async for ai_chunk in model.astream(messages):
+            chunk_text = normalize_content(
+                getattr(ai_chunk, "content", "")
+            )
+            if chunk_text:
+                chunks.append(chunk_text)
+
+        content = "".join(chunks) if chunks else _fallback_response(state)
+
+    except Exception:  # noqa: BLE001
+        # Do not silently replace a partially streamed answer.
+        if chunks:
+            raise
         content = _fallback_response(state)
     return {"response": content, "messages": [AIMessage(content=content)]}
 
@@ -399,8 +533,19 @@ def build_graph():
             "general": "general",
         },
     )
-    # All intent handlers converge to retrieval -> validation -> response.
-    for n in ("discover", "evaluate", "documents", "application", "udid_otr", "general"):
+
+    # Discovery feeds eligibility evaluation when that is the user intent.
+    builder.add_conditional_edges(
+        "discover",
+        route_after_discover,
+        {
+            "evaluate": "evaluate",
+            "retrieve_evidence": "retrieve_evidence",
+        },
+    )
+
+    # All remaining intent handlers converge to retrieval -> validation -> response.
+    for n in ("evaluate", "documents", "application", "udid_otr", "general"):
         builder.add_edge(n, "retrieve_evidence")
     builder.add_edge("retrieve_evidence", "validate_information")
     builder.add_edge("validate_information", "generate_response")

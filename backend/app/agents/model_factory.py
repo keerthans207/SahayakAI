@@ -238,63 +238,34 @@ def get_chat_model(provider: str | None = None) -> BaseChatModel:
 
 
 def _build_azure_foundry(settings):
-    """Build a Microsoft Foundry chat model using Entra ID."""
+    """Microsoft Foundry chat model via langchain-azure-ai (Foundry SDK v2).
 
-    # Validate configuration BEFORE initializing the model.
-    endpoint = (settings.foundry_project_endpoint or "").strip()
-    model_name = (settings.azure_ai_model or "").strip()
+    Uses the project endpoint + Entra ID (DefaultAzureCredential). This calls the
+    deployed model directly — it does NOT use Foundry Agent Service conversations.
 
-    missing = []
-
-    if not endpoint:
-        missing.append("FOUNDRY_PROJECT_ENDPOINT")
-
-    if not model_name:
-        missing.append("AZURE_AI_MODEL")
-
-    if missing:
-        raise ConfigurationError(
-            "Azure Foundry configuration is incomplete. "
-            f"Missing: {', '.join(missing)}. "
-            "Configure these environment variables before using "
-            "LLM_PROVIDER='azure_foundry'."
-        )
-
-    # Import dependencies lazily.
+    Streaming is enabled by default for real-time token generation.
+    """
+    settings.validate_llm_provider("azure_foundry")
     try:
-        from azure.identity import DefaultAzureCredential
-        from langchain_azure_ai.chat_models import (
-            AzureAIOpenAIApiChatModel,
-        )
-
-    except ImportError as exc:
+        from azure.identity.aio import DefaultAzureCredential  # noqa: F401
+        from langchain_azure_ai.chat_models import AzureAIOpenAIApiChatModel
+    except ImportError as exc:  # pragma: no cover - environment dependent
         raise ConfigurationError(
-            "Azure Foundry requires langchain-azure-ai "
-            "and azure-identity. Install them using: "
-            "pip install langchain-azure-ai azure-identity"
+            "AZURE_FOUNDRY provider requires 'langchain-azure-ai' and "
+            "'azure-identity'. Install them with: pip install langchain-azure-ai "
+            "azure-identity"
         ) from exc
 
-    # Use synchronous DefaultAzureCredential.
-    # On local development this can use Azure CLI login.
-    # On AWS EC2 it can use service-principal environment credentials.
-    try:
-        credential = DefaultAzureCredential()
+    from azure.identity.aio import DefaultAzureCredential
 
-        return AzureAIOpenAIApiChatModel(
-            project_endpoint=endpoint,
-            credential=credential,
-            model=model_name,
-            temperature=settings.llm_temperature,
-        )
-
-    except ConfigurationError:
-        raise
-
-    except Exception as exc:
-        raise ConfigurationError(
-            "Failed to initialize the Microsoft Foundry model. "
-            f"Error: {type(exc).__name__}: {str(exc)[:500]}"
-        ) from exc
+    return AzureAIOpenAIApiChatModel(
+        project_endpoint=settings.foundry_project_endpoint,
+        credential=DefaultAzureCredential(),
+        model=settings.azure_ai_model,
+        temperature=settings.llm_temperature,
+        max_tokens=settings.llm_max_tokens,
+        streaming=True,  # Enable token streaming
+    )
 
 
 def _build_openai_compatible(settings):

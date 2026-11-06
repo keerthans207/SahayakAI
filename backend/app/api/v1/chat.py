@@ -14,6 +14,8 @@ from app.schemas.chat import (
     ChatTurnResponse,
 )
 from app.services.chat_service import ChatService
+from app.utils.content_normalizer import normalize_content
+from app.services.chat_service import ChatService
 
 router = APIRouter()
 
@@ -81,23 +83,38 @@ async def stream_message(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ):
-    """Stream a response as Server-Sent Events where the model supports it."""
+    """Stream a response with true token-by-token generation from the LLM."""
     from fastapi.responses import StreamingResponse
+    import json
 
     svc = ChatService(db)
-    try:
-        result = await svc.send_message(user_id, session_id, body.content, language=body.language)
-    except KeyError:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
-
-    content = result["content"]
 
     async def event_gen():
-        # Token-by-token streaming for the final text. With the MOCK provider this
-        # yields word chunks; with a streaming model this could use model.astream.
-        for token in content.split():
-            yield f"data: {token} \n\n"
-        yield "data: [DONE]\n\n"
+        try:
+            async for event in svc.stream_message(user_id, session_id, body.content, language=body.language):
+                event_type = event.get("type")
+
+                if event_type == "token":
+                    # Send raw token content (preserves spaces, newlines, markdown)
+                    yield f"data: {json.dumps(event)}\n\n"
+
+                elif event_type == "timing":
+                    yield f"data: {json.dumps(event)}\n\n"
+
+                elif event_type == "metadata":
+                    yield f"data: {json.dumps(event)}\n\n"
+
+                elif event_type == "done":
+                    yield f"data: {json.dumps(event)}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+
+                elif event_type == "error":
+                    yield f"data: {json.dumps(event)}\n\n"
+                    return
+
+        except Exception as e:  # noqa: BLE001
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
