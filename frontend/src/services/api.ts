@@ -42,7 +42,7 @@ async function request<T>(
   }
 ): Promise<T> {
   const url = `${BASE_URL}${path}`;
-  const headers: Record<string, string> = {
+  const headers: any = {
     ...getAuthHeaders(),
   };
   if (options?.body) {

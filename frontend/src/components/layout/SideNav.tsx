@@ -9,14 +9,11 @@ import {
   ClipboardList,
   User,
   Settings,
-  LogOut,
 } from 'lucide-react';
-import { useAuthStore } from '../../stores/authStore';
 
 export const SideNav: React.FC = () => {
   const { t } = useTranslation();
   const location = useLocation();
-  const { clearAuth } = useAuthStore();
 
   const navigation = [
     {
@@ -56,11 +53,6 @@ export const SideNav: React.FC = () => {
     },
   ];
 
-  const handleLogout = () => {
-    clearAuth();
-    window.location.href = '/';
-  };
-
   return (
     <nav className="w-64 h-screen bg-card border-r fixed left-0 top-16 flex flex-col">
       <div className="flex-1 overflow-y-auto p-4">
@@ -86,16 +78,6 @@ export const SideNav: React.FC = () => {
             );
           })}
         </ul>
-      </div>
-
-      <div className="p-4 border-t">
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-3 px-4 py-3 rounded-lg w-full text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-        >
-          <LogOut className="w-5 h-5" />
-          <span className="font-medium">{t('nav.logout')}</span>
-        </button>
       </div>
     </nav>
   );

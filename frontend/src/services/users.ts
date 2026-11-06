@@ -1,4 +1,4 @@
-import { api } from '../lib/api';
+import { api } from './api';
 import { User } from './auth';
 
 export interface UpdateProfileData {
@@ -12,12 +12,10 @@ export interface UpdateProfileData {
 
 export const usersService = {
   async getProfile(): Promise<User> {
-    const response = await api.get<User>('/users/me');
-    return response.data;
+    return api.get<User>('/users/me');
   },
 
   async updateProfile(data: UpdateProfileData): Promise<User> {
-    const response = await api.put<User>('/users/me', data);
-    return response.data;
+    return api.patch<User>('/users/me', data);
   },
 };
