@@ -29,6 +29,7 @@ from app.services.retrieval_service import RetrievalService
 from app.services.scheme_service import SchemeService
 from app.services.search_service import get_search_provider
 from app.services.language_service import detect_language, resolve_response_language
+from app.utils.content_normalizer import normalize_content
 
 
 # --------------------------------------------------------------------------- #
@@ -314,7 +315,8 @@ async def generate_response_node(state: SahayakState) -> dict[str, Any]:
         messages.append(HumanMessage(content=_last_user_text(state) or "Hello"))
     try:
         ai_msg = await model.ainvoke(messages)
-        content = ai_msg.content if isinstance(ai_msg.content, str) else str(ai_msg.content)
+        # Normalize content from any AI provider format to plain string
+        content = normalize_content(ai_msg.content)
     except Exception:  # noqa: BLE001 - degrade gracefully, never crash chat
         content = _fallback_response(state)
     return {"response": content, "messages": [AIMessage(content=content)]}

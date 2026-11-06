@@ -14,6 +14,8 @@ from app.schemas.chat import (
     ChatTurnResponse,
 )
 from app.services.chat_service import ChatService
+from app.utils.content_normalizer import normalize_content
+from app.services.chat_service import ChatService
 
 router = APIRouter()
 
@@ -90,7 +92,8 @@ async def stream_message(
     except KeyError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
 
-    content = result["content"]
+    # Normalize content from any AI provider format
+    content = normalize_content(result["content"])
 
     async def event_gen():
         # Token-by-token streaming for the final text. With the MOCK provider this
