@@ -242,8 +242,10 @@ def _build_azure_foundry(settings):
 
     Uses the project endpoint + Entra ID (DefaultAzureCredential). This calls the
     deployed model directly — it does NOT use Foundry Agent Service conversations.
+    
+    Streaming is enabled by default for real-time token generation.
     """
-    settings.validate_llm_provider()
+    settings.validate_llm_provider("azure_foundry")
     try:
         from azure.identity.aio import DefaultAzureCredential  # noqa: F401
         from langchain_azure_ai.chat_models import AzureAIOpenAIApiChatModel
@@ -261,6 +263,8 @@ def _build_azure_foundry(settings):
         credential=DefaultAzureCredential(),
         model=settings.azure_ai_model,
         temperature=settings.llm_temperature,
+        max_tokens=settings.llm_max_tokens,
+        streaming=True,  # Enable token streaming
     )
 
 

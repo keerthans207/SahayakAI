@@ -141,11 +141,41 @@ export const api = {
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
       for (const line of lines) {
-        if (line.startsWith("data: ")) {
-          const token = line.slice(6);
-          if (token.trim() === "[DONE]") return;
-          yield token;
+        if (!line.startsWith("data:")) continue;
+
+        const payload = line.slice(5).replace(/^ /, "");
+
+        if (payload.trim() === "[DONE]") return;
+
+        let parsed: unknown;
+
+        try {
+          parsed = JSON.parse(payload);
+        } catch {
+          // Support legacy plain-text SSE events.
+          yield payload;
+          continue;
         }
+
+        if (!parsed || typeof parsed !== "object") continue;
+
+        const event = parsed as {
+          type?: string;
+          content?: unknown;
+          error?: string;
+        };
+
+        if (event.type === "token") {
+          if (typeof event.content === "string") {
+            yield event.content;
+          }
+        } else if (event.type === "error") {
+          throw new Error(event.error || "Assistant streaming failed");
+        } else if (event.type === "done") {
+          return;
+        }
+
+        // Timing and metadata events are intentionally not rendered.
       }
     }
   },

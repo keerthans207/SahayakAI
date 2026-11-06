@@ -114,13 +114,13 @@ class Settings(BaseSettings):
     def sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")
 
-    def validate_llm_provider(self) -> None:
+    def validate_llm_provider(self, provider: str | None = None) -> None:
         """Raise a useful, actionable error if a selected provider lacks config.
 
         Called at startup so misconfiguration fails loudly rather than at the
         first request. The MOCK provider never requires any external config.
         """
-        provider = self.llm_provider
+        provider = (provider or self.llm_provider).strip().lower()
         missing: list[str] = []
         if provider == "azure_foundry":
             if not self.foundry_project_endpoint:

@@ -325,11 +325,23 @@ async def generate_response_node(state: SahayakState) -> dict[str, Any]:
     if not messages or not any(isinstance(m, HumanMessage) for m in messages[-3:]):
         # Ensure there is at least one human turn for models that expect it.
         messages.append(HumanMessage(content=_last_user_text(state) or "Hello"))
+    chunks: list[str] = []
     try:
-        ai_msg = await model.ainvoke(messages)
-        # Normalize content from any AI provider format to plain string
-        content = normalize_content(ai_msg.content)
-    except Exception:  # noqa: BLE001 - degrade gracefully, never crash chat
+        # Stream actual model chunks so LangGraph emits
+        # on_chat_model_stream events to the agent stream.
+        async for ai_chunk in model.astream(messages):
+            chunk_text = normalize_content(
+                getattr(ai_chunk, "content", "")
+            )
+            if chunk_text:
+                chunks.append(chunk_text)
+
+        content = "".join(chunks) if chunks else _fallback_response(state)
+
+    except Exception:  # noqa: BLE001
+        # Do not silently replace a partially streamed answer.
+        if chunks:
+            raise
         content = _fallback_response(state)
     return {"response": content, "messages": [AIMessage(content=content)]}
 
